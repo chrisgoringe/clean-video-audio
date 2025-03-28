@@ -1,3 +1,6 @@
 python-ffmpeg
 deepfilternet
 PySoundFile
+av
+whisper
+ffmpeg
