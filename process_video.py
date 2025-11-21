@@ -4,7 +4,7 @@ import os, json
 import torchaudio, torch, torchvision
 from df import init_df, enhance
 import whisper
-from timer import Timer
+from modules.timer import Timer
 
 DEVICE = 'cuda' if torch.cuda.is_available() else 'cpu'
 
@@ -13,12 +13,14 @@ class VideoFile:
     df_stats = None
     whisper_model = None
 
-    def __init__(self, directory, file, start_s:float=0, end_s:Optional[float]=None):
-        self.directory = directory
-        self.audio_reader = torchvision.io.VideoReader(src=os.path.join(directory,file), stream='audio') 
+    def __init__(self, base, ext, start_s:float=0, end_s:Optional[float]=None):
+        self.audio_reader = torchvision.io.VideoReader(src=f"{base}{ext}", stream='audio') 
         self.metadata = self.audio_reader.get_metadata()
         self.audio = None
-        m = os.path.join(directory, 'clean_audio.wav')
+        self.base = base
+        self.start_s = start_s
+        self.end_s = end_s
+        m = f"{base}.clean_audio.wav"
         self.clean_audio_file = m if os.path.exists(m) else None
         self._audio_sample_rate = None
 
@@ -28,7 +30,9 @@ class VideoFile:
             return
         frames = [frame['data'] for frame in self.audio_reader]
         self.audio = torch.cat(frames, dim=0)
-        self.audio = torch.sum(self.audio, dim=1) # to mono
+        self.audio = torch.mean(self.audio, dim=1) # to mono
+        self.audio = self.audio[self.start_s*self.audio_sample_rate : (self.end_s*self.audio_sample_rate if self.end_s else None)]
+        
         self.audio.unsqueeze_(0)
 
     @property
@@ -70,6 +74,8 @@ class VideoFile:
             with Timer("Normalising loudness"):
                 self.normalise_loudness(normalise_target)
 
+        VideoFile.enhance_model = None
+
     def save_audio(self, path:str):
         torchaudio.save(uri=path, src=self.audio, sample_rate=self.audio_sample_rate, format='wav')
         self.clean_audio_file = path
@@ -85,7 +91,7 @@ class VideoFile:
 
     def transcribe_audio(self):
         if not self.clean_audio_file:
-            self.save_audio(os.path.join(self.directory,'clean_audio.wav'))
+            self.save_audio(f"{self.base}.clean_audio.wav")
         if VideoFile.whisper_model is None:
             VideoFile.whisper_model = whisper.load_model("turbo")
             VideoFile.whisper_model.to(torch.float)
@@ -93,31 +99,52 @@ class VideoFile:
         results = VideoFile.whisper_model.transcribe(self.clean_audio_file, language='en')
         return results
     
-directory = os.path.join(
-    "/Users",
-    "chrisgoringe",
-    "Library",
-    "CloudStorage",
-    "Dropbox",
-    "Family Stuff",
-    "Chris",
-    "Pastoral Supervision Course 2025",
-    "2025 Semester 1",
-    "Recording of 2025-03-25",
-)
+def combine_segments(segments:list[dict]):
+    txt = None
+    last_end = 0
+    gap = None
+    for seg in segments:
+        if txt is None: 
+            gap = seg['start'] - last_end
+            txt = seg['text']
+        else:
+            txt += " " + seg['text']
+        if txt[-1]=='.':
+            yield (gap, txt)
+            txt = None
+            gap = None
+            last_end = seg['end']
+    if txt is not None:
+        yield (gap, txt)
+    
+def clean_and_transcribe(directory, file, para_gap:float, **kwargs):
+    base = os.path.join(directory, os.path.splitext(file)[0])
 
-if os.path.exists(os.path.join(directory,'results.json')):
-    with open(os.path.join(directory,'results.json'), 'r') as fp:
-        results = json.load(fp)
-else:
-    file =  "video1916462910.mp4"
-    v = VideoFile(directory=directory, file=file)
-    v.clean_audio()
-    results = v.transcribe_audio()
-    with open(os.path.join(directory,'results.json'), 'w') as fp:
-        print(json.dumps(results, indent=2), file=fp)
+    if os.path.exists(f"{base}.json"):
+        with open(f"{base}.json", 'r') as fp:
+            results = json.load(fp)
+    else:
+        v = VideoFile(base=base, ext=os.path.splitext(file)[1], **kwargs)
+        with Timer("Clean"):      v.clean_audio()
+        with Timer("Transcribe"): results = v.transcribe_audio()
+        with open(f"{base}.json", 'w') as fp:
+            print(json.dumps(results, indent=2), file=fp)
 
-with open(os.path.join(directory,'results.txt'), 'w') as fp: 
-    for seg in results['segments']:
-        print(seg['text'], file=fp)
+    with open(f"{base}.txt", 'w', encoding='UTF8') as fp: 
+        for (gap, line) in combine_segments(results['segments']):
+            if gap>para_gap: print("\n", file=fp)
+            print(f"{gap:>.1f} {line}", file=fp, end="") 
 
+if __name__=='__main__':
+    directory = os.path.join(
+        "/Users","chris","Downloads","2025-03-30"
+    )
+    file = "Roseville Uniting Church Livestream.mp4"
+    start_m = 27
+    start_s = 0
+    end_m = 49
+    end_s = 20
+
+    para_gap = 1.7
+
+    clean_and_transcribe(directory, file, start_s=start_s+60*start_m, end_s=end_s+60*end_m, para_gap=para_gap)

@@ -1,9 +1,9 @@
-from ffmpeg import FFmpeg
+from ffmpeg.ffmpeg import FFmpeg
 import torchaudio
 import os, tempfile
 from df import init_df, enhance
 from functools import partial
-from timer import Timer
+from modules.timer import Timer
 import argparse, random
 
 class Enhancer:

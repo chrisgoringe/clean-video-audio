@@ -5,4 +5,4 @@ av
 openai-whisper
 ffmpeg
 torchvision
-torchaudio
+torchaudio==2.7.0
