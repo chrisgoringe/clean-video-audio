@@ -15,27 +15,28 @@ def convert(fromfilepath, tofilepath):
 class Temp:
     dir = Path(tempfile.mkdtemp())
 
-def add_video_loop(videofilepath:Path, audiofilepath:Path, outfilepath:Path, seconds:Optional[float]=None):
+def add_video_loop(videofilepath:Path, audiofilepath:Path, outfilepath:Path, seconds:Optional[float]=None, extras:dict={}):
     ffmpeg = (
         FFmpeg()
         .input(videofilepath)
         .input(audiofilepath)
-        .output(outfilepath, options={'shortest':None, 'map':['1:a:0','0:v:0']})
+        .output(outfilepath, options={'shortest':None, 'map':['1:a:0','0:v:0'], **extras})
         .option('stream_loop', -1)
         .option('y')
     )
+
+    #for key, value in extras.items(): ffmpeg = ffmpeg.option(key, value)
     
-    if seconds:
-        starttime = time.monotonic()
-        @ffmpeg.on("progress")
-        def on_progress(progress: Progress):
-            done = progress.time.seconds/seconds
-            elapsed = time.monotonic() - starttime
-            if done>0.01:
-                remaining = elapsed*(1-done)/done
-                print(f"\rProcessed {100*done:>6.2f}% - estimated time remaining {remaining:>4.0f}s  ", end='')
-            else:
-                print(f"\rProcessed {100*done:>6.2f}%\r", end='')
+    starttime = time.monotonic()
+    @ffmpeg.on("progress")
+    def on_progress(progress: Progress):
+        done = (progress.time.seconds/seconds) if seconds else 0
+        elapsed = time.monotonic() - starttime
+        if done>0.01:
+            remaining = elapsed*(1-done)/done
+            print(f"\rProcessed {100*done:>6.2f}% - estimated time remaining {remaining:>4.0f}s  ", end='')
+        else:
+            print(f"\rProcessed {100*done:>6.2f}%\r", end='')
             
 
     @ffmpeg.on("completed")
