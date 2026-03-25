@@ -40,6 +40,7 @@ def extract_audio(videofilepath, audiofilepath=None):
     return audiofilepath
 
 def clean_audio(audiofilepath, chunk=120):
+    assert Enhancer.enhance_model is not None and Enhancer.df_stats is not None
     saveaudiofilepath = f"{os.path.splitext(audiofilepath)[0]}-clean{os.path.splitext(audiofilepath)[1]}"
     wav, samplerate = torchaudio.load(audiofilepath)
     chunk_size = chunk * samplerate
