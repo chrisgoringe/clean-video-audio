@@ -113,8 +113,10 @@ paths:dict[Path,Path] = {}
 try:
     with open('shortcuts.yaml','r') as fh: 
         if (data:=yaml.safe_load(fh)): paths = { Path(k):Path(v) for k,v in data.items() }
+except FileNotFoundError:
+    print(f"shortcuts.yaml not found.") 
 except Exception as e:
-    print(f"{e} when trying to load shortcuts")   
+    print(f"{e} when trying to load shortcuts from shortcuts.yaml")   
 
 with open('README.md') as fh:
     HELP = (
