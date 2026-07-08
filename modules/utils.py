@@ -30,19 +30,16 @@ def add_video_loop(videofilepath:Path, audiofilepath:Path, outfilepath:Path, sec
     starttime = time.monotonic()
     @ffmpeg.on("progress")
     def on_progress(progress: Progress):
-        done = (progress.time.seconds/seconds) if seconds else 0
-        elapsed = time.monotonic() - starttime
-        if done>0.01:
-            remaining = elapsed*(1-done)/done
-            print(f"\rProcessed {100*done:>6.2f}% - estimated time remaining {remaining:>4.0f}s  ", end='')
+        if seconds:
+            done = (progress.time.seconds/seconds)
+            if done>0.01:
+                remaining = (time.monotonic() - starttime)*(1-done)/done
+                print(f"\rProcessed {done:>6.2%} - estimated time remaining {remaining:>4.0f}s  ", end='')
+            else:
+                print(f"\rProcessed {done:>6.2%}\r", end='')
         else:
-            print(f"\rProcessed {100*done:>6.2f}%\r", end='')
+            print(f"\rProcessed {progress.frame} frames\r", end='')
             
-
-    @ffmpeg.on("completed")
-    def on_completed():
-        print("\r"+" "*60, end='')
-    
     ffmpeg.execute()
 
 #ffmpeg  -stream_loop -1 -i videofilepath -i audiofilepath -shortest -map 0:v:0 -map 1:a:0 -y outfilepath

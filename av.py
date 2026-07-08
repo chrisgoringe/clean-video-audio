@@ -3,7 +3,7 @@ from modules.enhancer import AudioEnhancer
 from modules.utils import convert, Temp, add_video_loop
 from modules.timer import Timer
 from pathlib import Path
-import argparse
+import argparse, yaml
 
 def add_suffix_if_missing(p:Path, suffix:str) -> Path: return p if p.suffix else Path(f"{p}{suffix}")
 def set_suffix(p:Path, suffix:str) -> Path: return p.parent / f"{p.stem}{suffix}"
@@ -65,47 +65,24 @@ def patchvideo(audio_source:Path, savepath:Path, background_video:Path, do_audio
             extras        = {'b:v':'500k'}
         )
 
+DEFAULT_LOUDNESS = -20.0
 
-
-HELP = '''# Clean and normalised audio, and optionally add video background.
-
-`python audio.py [action] --i input_file --o output_file [--b background_video_file]`
-
-- input_file can be any media file that ffmpeg can read (including a video file)
-- If extensions are omitted for input they will be guessed (.wav, .mp3, .mp4 for audio, .mp4 for video)
-- If extensions are omitted for output .wav or .mp4 will be used.
-
-## auto
-action will be guessed from extension of output_file (.wav or .mp3 -> audio, .mp4 -> videopatch)
-
-## audio 
-read an audiofile, clean and normalise it, and save the output
-`python audio.py [audio] --i audio_file --o output_audiofile`
-
-## video
-read an audiofile, clean and normalise it, add a video (with looping), and save the output. 
-`python audio.py [video] --i audio_file --v video_file --o output_videofile`
-
-If audio_file == video_file, this cleans the audio of an existing video
-
-## Other options
-- `--no_enhance` : with patchvideo, skip the audio enhance step
-- `--loudness`   : target loudness (in dB) for normalisation (default -20)
-- `--root`       : root directory for --i, --v, --o
-'''
-
-def main():
+def main(args:list[str]|None=None):
     a = argparse.ArgumentParser()
-    a.add_argument('--i', type=Path, required=True, help='Source audio file')
-    a.add_argument('--o', type=Path, required=True, help='output file')
-    a.add_argument('--v', type=Path, default='Stained_Glass_Scene_14_hd_1080.mp4', help='background video loop')
-    a.add_argument('--root', type=Path, default=default_path, help=f'base directory for input and output (default {default_path})')
+    a.add_argument('-i', '--in',    dest='i', type=Path, required=True, help='Source audio file')
+    a.add_argument('-o', '--out',   dest='o', type=Path, required=True, help='output file')
+    a.add_argument('-v', '--video', dest='v', type=Path, help='source video file')
+    a.add_argument('--root',  type=Path, default='.', help=f'base directory (or shortcut) for input and output (default "downloads", shortcuts are {[k for k in paths]})')
+    a.add_argument('--vroot', type=Path, default='.', help=f'base directory (or shortcut) for video (default "bg", shortcuts are {[k for k in paths]})')
     a.add_argument('--no_enhance', action='store_true', help="skip audio enhancement")
-    a.add_argument('--loudness', type=float, default=-20.0, help="Target loudness (dB), default -20")
-    a.add_argument('action', choices=['auto', 'audio', 'video'], default='auto', help="")
+    a.add_argument('--loudness', type=float, default=DEFAULT_LOUDNESS, help=f"Target loudness (dB), default {DEFAULT_LOUDNESS}")
+    a.add_argument('--action', choices=['auto', 'audio', 'video'], default='auto', help="")
     
-    try:    arguments = a.parse_args()
+    try:    arguments = a.parse_args(args)
     except: return print(HELP)
+
+    if arguments.root  in paths: arguments.root  = paths[arguments.root ]
+    if arguments.vroot in paths: arguments.vroot = paths[arguments.vroot]
 
     if arguments.action == 'auto':
         if arguments.o.suffix=='.mp3' or arguments.o.suffix=='.wav': arguments.action = 'audio'
@@ -125,15 +102,27 @@ def main():
         )
     elif arguments.action == 'video':
         patchvideo(
-            audio_source     = arguments.root / arguments.i,
-            savepath         = arguments.root / arguments.o,
-            background_video = arguments.root / arguments.v,
+            audio_source     = arguments.root  / arguments.i,
+            savepath         = arguments.root  / arguments.o,
+            background_video = arguments.vroot / arguments.v,
             do_audio_enhance = not arguments.no_enhance,
             target_loudness  = arguments.loudness
         )
 
-default_path = Path(r"C:\Users\chris\Dropbox\Roseville\YA Study\Dear Kim")
+paths:dict[Path,Path] = {}
+try:
+    with open('shortcuts.yaml','r') as fh: 
+        if (data:=yaml.safe_load(fh)): paths = { Path(k):Path(v) for k,v in data.items() }
+except Exception as e:
+    print(f"{e} when trying to load shortcuts")   
+
+with open('README.md') as fh:
+    HELP = (
+        fh.read() + "\n" +
+        (("Shortcuts defined:\n" + "\n".join( f"{str(k):>10} -> {str(v)}" for k,v in paths.items()))
+            if paths else "None defined")
+        )
 
 if __name__=='__main__':
-    main()
+    main( )
     

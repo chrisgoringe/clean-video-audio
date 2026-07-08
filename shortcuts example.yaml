@@ -1,0 +1,4 @@
+# Rename this file to shortcuts.yaml and edit it to use
+# Shortcuts are simply name:path, one per line. Spaces can be used in the path.
+
+downloads: C:\Users\myname\Downloads
