@@ -1,5 +1,7 @@
 # Clean and normalise audio, and optionally add video background.
 
+`conda activate av`
+
 `python av.py [--action action] -i input_file -o output_file [-v background_video_file]`
 
 - `input_file` can be any media file that ffmpeg can read (including a video file)
