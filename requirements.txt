@@ -7,3 +7,4 @@ ffmpeg
 torchvision
 torchaudio==2.7.0
 pyyaml
+noisereduce

@@ -1,18 +1,35 @@
-from dataclasses import dataclass
-import torch, torchaudio
+import torch
+from torchcodec.decoders import AudioDecoder # type: ignore
+from torchcodec.encoders import AudioEncoder # type: ignore
+from torchcodec import AudioSamples # type: ignore
+from noisereduce import reduce_noise
+from noisereduce.torchgate import TorchGate
 
-@dataclass
+from pathlib import Path
+
 class Audio:
-    wav:torch.Tensor
-    samplerate:int
+    def __init__(self, sourcefile:str|Path):
+        samples:AudioSamples = AudioDecoder(sourcefile).get_all_samples()
 
-    @property
-    def samples(self):
-        return self.wav.shape[-1]
-    
-    @classmethod
-    def from_file(cls, filepath) -> 'Audio':
-        return cls(*torchaudio.load(str(filepath)))
-    
+        self.data:torch.Tensor = samples.data
+        self.dtype:torch.dtype = self.data.dtype
+        self.sample_rate:int   = samples.sample_rate
+        self.duration:float    = samples.duration_seconds
+
     def save(self, filepath):
-        torchaudio.save(str(filepath), self.wav, self.samplerate, channels_first=True)
+        AudioEncoder(self.data, sample_rate=self.sample_rate).to_file(filepath)
+
+    def enhance(self, nr:float=0.0, target_peak:float=0.0, use_torch=False) -> 'Audio':
+        if nr:
+            if use_torch:
+                tg = TorchGate(sr=self.sample_rate, nonstationary=True).to("cuda")
+                self.data = tg(self.data.cuda()).cpu()
+            else:
+                y = self.data.numpy()
+                y = reduce_noise(y=y, sr=self.sample_rate, stationary=False, prop_decrease=nr)
+                self.data = torch.from_numpy(y).to(self.dtype)
+        if target_peak: 
+            peak = self.data.abs().max().clamp_min(1e-8)
+            self.data = target_peak * self.data / peak
+        return self
+
